@@ -1,7 +1,6 @@
 """
-app.py — Gradio Web UI for AI Study Assistant V3
-Run:  python app.py
-Then open http://localhost:7860 in your browser.
+app.py – Gradio web UI for the AI Study Assistant.
+Run: python app.py  then open http://localhost:7860
 """
 import json
 import os
@@ -25,9 +24,6 @@ from src.text_utils import (
 from src.eval_metrics import compute_rouge
 from src.experiment_log import log_run, build_log_row
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
 CANDIDATE_LABELS = [
     "Artificial Intelligence",
     "Computer Science",
@@ -41,12 +37,9 @@ CANDIDATE_LABELS = [
 DEFAULT_CLASSIFIER = "facebook/bart-large-mnli"
 DEFAULT_SUMMARIZER  = "facebook/bart-large-cnn"
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def highlight_keywords(text: str, keywords: List[str]) -> str:
-    """Return an HTML string with keywords highlighted in gold."""
+    """Wraps each keyword in a gold highlight span."""
     highlighted = text
     for kw in sorted(keywords, key=len, reverse=True):
         pattern = re.compile(re.escape(kw), re.IGNORECASE)
@@ -87,10 +80,6 @@ def build_metrics_md(timings: dict, comp: float, rouge: dict) -> str:
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# Core pipeline
-# ---------------------------------------------------------------------------
-
 def run_pipeline(
     audio_file: Optional[str],
     whisper_model_size: str,
@@ -109,9 +98,7 @@ def run_pipeline(
     timings: dict = {}
     t0 = time.perf_counter()
 
-    # ------------------------------------------------------------------
-    # 1. Transcription
-    # ------------------------------------------------------------------
+    # transcribe
     progress(0.05, desc="Loading Whisper model…")
     w_model = whisper.load_model(whisper_model_size)
     progress(0.15, desc="Transcribing audio…")
@@ -120,10 +107,8 @@ def run_pipeline(
     transcript = normalize_whitespace(result["text"])
     timings["transcribe_s"] = round(time.perf_counter() - t, 2)
 
-    # ------------------------------------------------------------------
-    # 2. Zero-shot topic classification (BART-large-MNLI)
-    # ------------------------------------------------------------------
-    progress(0.35, desc="Classifying topics (zero-shot BART-MNLI)…")
+    # topic classification
+    progress(0.35, desc="Classifying topics…")
     t = time.perf_counter()
     clf = pipeline("zero-shot-classification", model=DEFAULT_CLASSIFIER)
     out = clf(sequences=transcript, candidate_labels=CANDIDATE_LABELS, multi_label=True)
@@ -137,10 +122,8 @@ def run_pipeline(
         topics = raw_topics[:top_n_topics]
     timings["classify_s"] = round(time.perf_counter() - t, 2)
 
-    # ------------------------------------------------------------------
-    # 3. TF-IDF keyword extraction
-    # ------------------------------------------------------------------
-    progress(0.55, desc="Extracting keywords (TF-IDF)…")
+    # keyword extraction
+    progress(0.55, desc="Extracting keywords…")
     t = time.perf_counter()
     vec = TfidfVectorizer(stop_words="english", ngram_range=(1, 2), max_features=2000)
     X = vec.fit_transform([transcript])
@@ -151,9 +134,7 @@ def run_pipeline(
     keywords = clean_keywords(raw_kws, min_len=4, max_items=8)
     timings["keywords_s"] = round(time.perf_counter() - t, 2)
 
-    # ------------------------------------------------------------------
-    # 4. Hierarchical summarisation (BART-large-CNN)
-    # ------------------------------------------------------------------
+    # hierarchical summarisation
     progress(0.65, desc="Loading summarisation model…")
     t = time.perf_counter()
     tokenizer = AutoTokenizer.from_pretrained(DEFAULT_SUMMARIZER)
@@ -193,18 +174,16 @@ def run_pipeline(
     comp  = round(len(summary.split()) / max(1, len(transcript.split())), 3)
     rouge = compute_rouge(ref_summary.strip() or None, summary)
 
-    # ------------------------------------------------------------------
-    # 5. Persist results
-    # ------------------------------------------------------------------
+    # save
     os.makedirs("outputs/ui_runs", exist_ok=True)
     payload = {
         "transcript": transcript,
-        "topics": topics,
-        "keywords": keywords,
-        "summary": summary,
-        "timings": timings,
+        "topics":     topics,
+        "keywords":   keywords,
+        "summary":    summary,
+        "timings":    timings,
         "compression_ratio": comp,
-        "metrics": rouge,
+        "metrics":    rouge,
     }
     json_path = os.path.abspath("outputs/ui_runs/result.json")
     with open(json_path, "w", encoding="utf-8") as f:
@@ -213,7 +192,7 @@ def run_pipeline(
     log_run(
         "outputs/experiments.csv",
         build_log_row(
-            version="v3-ui",
+            version="v4-ui",
             audio=audio_file,
             timings=timings,
             compression_ratio=comp,
@@ -225,27 +204,18 @@ def run_pipeline(
         ),
     )
 
-    progress(1.0, desc="Done! ✅")
-
-    topic_dict     = {t["label"]: t["confidence"] for t in topics}
-    highlighted    = highlight_keywords(transcript, keywords)
-    metrics_md     = build_metrics_md(timings, comp, rouge)
-    keywords_str   = ", ".join(keywords)
+    progress(1.0, desc="Done!")
 
     return (
-        transcript,       # tab 1 – raw
-        highlighted,      # tab 1 – highlighted HTML
-        topic_dict,       # tab 2 – gr.Label
-        keywords_str,     # tab 2 – textbox
-        summary,          # tab 3
-        metrics_md,       # tab 4
-        json_path,        # tab 5 – file download
+        transcript,
+        highlight_keywords(transcript, keywords),
+        {t["label"]: t["confidence"] for t in topics},
+        ", ".join(keywords),
+        summary,
+        build_metrics_md(timings, comp, rouge),
+        json_path,
     )
 
-
-# ---------------------------------------------------------------------------
-# Gradio interface
-# ---------------------------------------------------------------------------
 
 CSS = """
 .gradio-container { max-width: 1150px !important; margin: auto !important; }
@@ -258,15 +228,13 @@ with gr.Blocks(theme=gr.themes.Soft(), css=CSS, title="AI Study Assistant") as d
 
     gr.Markdown("# 🎓 AI Study Assistant", elem_id="header-title")
     gr.Markdown(
-        "Upload a lecture recording and get an automatic **transcript**, "
-        "**topic classification**, **keywords**, and a **hierarchical summary** — "
-        "all running locally on your machine.",
+        "Upload a lecture recording to get a transcript, topic labels, keywords, "
+        "and a summary — all processed locally on your machine.",
         elem_id="header-sub",
     )
 
     with gr.Row(equal_height=False):
 
-        # ---- Left column: inputs ----
         with gr.Column(scale=3):
             audio_in = gr.Audio(
                 label="🎙️ Upload Lecture Audio (WAV / MP3 / M4A)",
@@ -275,13 +243,12 @@ with gr.Blocks(theme=gr.themes.Soft(), css=CSS, title="AI Study Assistant") as d
             )
             ref_sum_in = gr.Textbox(
                 label="📋 Reference Summary — optional (enables ROUGE scoring)",
-                placeholder="Paste a human-written summary here to measure quality against it…",
+                placeholder="Paste a reference summary here to measure quality against it…",
                 lines=4,
             )
 
-        # ---- Right column: settings ----
         with gr.Column(scale=2):
-            with gr.Accordion("⚙️ Processing Settings", open=False):
+            with gr.Accordion("⚙️ Settings", open=False):
                 whisper_model = gr.Dropdown(
                     choices=["tiny", "base", "small", "medium", "large"],
                     value="base",
@@ -316,10 +283,8 @@ with gr.Blocks(theme=gr.themes.Soft(), css=CSS, title="AI Study Assistant") as d
                 )
 
     run_btn = gr.Button("▶  Process Audio", variant="primary", size="lg")
-
     gr.Markdown("---")
 
-    # ---- Output tabs ----
     with gr.Tabs():
 
         with gr.TabItem("📝 Transcript"):
@@ -349,13 +314,9 @@ with gr.Blocks(theme=gr.themes.Soft(), css=CSS, title="AI Study Assistant") as d
             metrics_md = gr.Markdown()
 
         with gr.TabItem("💾 Download Results"):
-            gr.Markdown(
-                "Click the file below to download the full JSON output, "
-                "including transcript, topics, keywords, summary, timings, and metrics."
-            )
+            gr.Markdown("Download the full JSON output (transcript, topics, keywords, summary, timings, metrics).")
             file_out = gr.File(label="result.json")
 
-    # ---- Wire up ----
     run_btn.click(
         fn=run_pipeline,
         inputs=[

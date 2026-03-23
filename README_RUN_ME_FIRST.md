@@ -1,10 +1,14 @@
-# AI Study Assistant V3
+# CM3070 Final Project – AI Study Assistant
 
-## 1) Setup
+Local, privacy-preserving lecture processing pipeline. Takes audio as input and
+outputs a transcript, zero-shot topic labels, TF-IDF keywords, and a hierarchical summary.
 
-### macOS/Linux
+---
+
+## Setup
+
+### macOS / Linux
 ```bash
-cd ai_study_assistant_v3
 python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
@@ -13,55 +17,72 @@ pip install -r requirements.txt
 
 ### Windows (PowerShell)
 ```powershell
-cd ai_study_assistant_v3
 python -m venv venv
 .\venv\Scripts\Activate.ps1
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-Install FFmpeg:
-- macOS: brew install ffmpeg
-- Ubuntu: sudo apt-get install ffmpeg
-- Windows: install FFmpeg and add it to PATH
+Install FFmpeg (required by Whisper):
+- macOS: `brew install ffmpeg`
+- Ubuntu: `sudo apt-get install ffmpeg`
+- Windows: download from https://ffmpeg.org and add to PATH
 
-## 2) Add your audio
-Put your file in the project folder, e.g.:
-- test_lecture.wav
+---
 
-Optional references (for WER/ROUGE):
-- refs/test_lecture_transcript.txt
-- refs/test_lecture_summary.txt
+## Running the pipeline
 
-## 3) Run
+Place your audio file in the project folder (e.g. `test_lecture.wav`) then run:
+
 ```bash
-python main.py --audio test_lecture.wav --version_tag v3 --output_dir outputs/run_v3 --log_csv outputs/experiments.csv
+python main.py --audio test_lecture.wav --version_tag v4 --output_dir outputs/run_v4 --log_csv outputs/experiments.csv
 ```
 
-With references:
+With reference files for metric scoring:
 ```bash
-python main.py --audio test_lecture.wav --ref_transcript refs/test_lecture_transcript.txt --ref_summary refs/test_lecture_summary.txt --version_tag v3_eval --output_dir outputs/run_v3_eval --log_csv outputs/experiments.csv
+python main.py --audio test_lecture.wav \
+  --ref_transcript refs/test_lecture_transcript.txt \
+  --ref_summary refs/test_lecture_summary.txt \
+  --version_tag v4_eval \
+  --output_dir outputs/run_v4_eval \
+  --log_csv outputs/experiments.csv
 ```
 
-## 4) Generate report tables
+---
+
+## Web interface
+
+```bash
+python app.py
+```
+
+Open http://localhost:7860 in your browser.
+
+---
+
+## Generate report tables
+
 ```bash
 python src/make_tables.py --csv_path outputs/experiments.csv --out_dir outputs
 ```
 
-Creates:
-- outputs/table2_performance_by_version.csv
-- outputs/table3_latest_runs.csv
+Produces:
+- `outputs/table2_performance_by_version.csv`
+- `outputs/table3_latest_runs.csv`
 
-## 5) What to paste into report
-- Figure 4: screenshot of terminal output from run
-- Figure 5: screenshot of outputs/run_v3/result.json
-- Table 2: outputs/table2_performance_by_version.csv
-- Table 3: outputs/table3_latest_runs.csv
+---
 
-## 6) V1 vs V3 comparison
-Run old code with:
-- --version_tag v1_baseline
-Then run V3 with:
-- --version_tag v3_eval
-Use same audio and refs.
-Both rows will be in outputs/experiments.csv
+## Evaluation scripts
+
+Full V4 evaluation (hierarchical + one-pass ablation):
+```bash
+python run_eval.py
+```
+
+V1 baseline only:
+```bash
+python run_v1_baseline.py
+```
+
+Both scripts read `test_lecture.wav` and write JSON results to `outputs/`.
+Optional reference files in `refs/` enable ROUGE and WER scoring.

@@ -1,5 +1,5 @@
 """
-main.py — AI Study Assistant V3  (CLI entry point)
+main.py – entry point for the AI Study Assistant pipeline.
 Usage: python main.py --audio lecture.wav [options]
 """
 import argparse
@@ -25,33 +25,20 @@ from src.text_utils import (
 from src.eval_metrics import compute_asr_metrics, compute_rouge
 from src.experiment_log import log_run, build_log_row
 
-# ---------------------------------------------------------------------------
-# Device selection — auto-detect GPU, fall back to CPU
-# ---------------------------------------------------------------------------
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-# ---------------------------------------------------------------------------
-# Cached model loaders — models are loaded once per process, not per call
-# ---------------------------------------------------------------------------
-
 @lru_cache(maxsize=4)
 def _load_whisper(model_size: str):
-    """Load and cache a Whisper model by size string."""
     return whisper.load_model(model_size, device=DEVICE)
 
 
 @lru_cache(maxsize=4)
 def _load_summarizer(model_name: str):
-    """Load and cache a seq2seq tokenizer + model pair."""
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForSeq2SeqLM.from_pretrained(model_name).to(DEVICE)
     return tokenizer, model
 
-
-# ---------------------------------------------------------------------------
-# Pipeline components
-# ---------------------------------------------------------------------------
 
 def transcribe_audio(audio_path: str, model_size: str = "base", language: str = "en") -> str:
     model = _load_whisper(model_size)
@@ -80,10 +67,7 @@ def extract_keywords_tfidf(text: str, top_k: int = 12) -> List[str]:
 
 
 def _summarise_one(text: str, summarizer_model: str, max_length: int, min_length: int) -> str:
-    """
-    Summarise a single text chunk using the cached BART model.
-    Input is truncated to the model's maximum token capacity.
-    """
+    """Summarise a single text block; falls back to first 3 sentences on error."""
     try:
         tokenizer, model = _load_summarizer(summarizer_model)
         inputs = tokenizer(text, max_length=1024, truncation=True, return_tensors="pt").to(DEVICE)
@@ -92,8 +76,8 @@ def _summarise_one(text: str, summarizer_model: str, max_length: int, min_length
             max_length=max_length,
             min_length=min_length,
             do_sample=False,
-            num_beams=4,          # Upgraded from 2 → 4 for better beam search quality
-            length_penalty=2.0,   # Encourages slightly longer, more complete summaries
+            num_beams=4,
+            length_penalty=2.0,
             early_stopping=True,
         )
         return normalize_whitespace(tokenizer.batch_decode(summary_ids, skip_special_tokens=True)[0])
@@ -104,16 +88,10 @@ def _summarise_one(text: str, summarizer_model: str, max_length: int, min_length
 
 
 def summarise_hierarchical(transcript: str, summarizer_model: str, max_length: int, min_length: int) -> str:
-    """
-    Sentence-boundary-aware hierarchical summarisation.
-
-    Chunks are formed at sentence boundaries so that no sentence is split
-    mid-way.  Each chunk is summarised independently; the interim summaries
-    are then merged and re-summarised to produce the final output.
-    """
+    """Splits the transcript into sentence-aligned chunks, summarises each,
+    then merges and re-summarises to produce the final output."""
     words = transcript.split()
     chunk_size = adaptive_chunk_size(len(words))
-    # Use sentence-aware chunking (V4 improvement over word-based chunking)
     chunks = chunk_text_sentences(transcript, target_words=chunk_size)
 
     if len(chunks) == 1:
@@ -154,12 +132,8 @@ def read_optional_text(path: str) -> str:
         return f.read().strip()
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
 def main() -> None:
-    parser = argparse.ArgumentParser(description="AI Study Assistant V3")
+    parser = argparse.ArgumentParser(description="AI Study Assistant")
     parser.add_argument("--audio",            required=True,  help="Path to lecture audio file")
     parser.add_argument("--output_dir",       default="outputs/run_latest")
     parser.add_argument("--whisper_model",    default="base",
@@ -169,7 +143,7 @@ def main() -> None:
     parser.add_argument("--summary_model",    default="facebook/bart-large-cnn")
     parser.add_argument("--max_summary_len",  type=int,   default=130)
     parser.add_argument("--min_summary_len",  type=int,   default=40)
-    parser.add_argument("--version_tag",      default="v3")
+    parser.add_argument("--version_tag",      default="v4")
     parser.add_argument("--min_topic_conf",   type=float, default=0.45)
     parser.add_argument("--top_topics",       type=int,   default=3)
     parser.add_argument("--top_keywords",     type=int,   default=12)
@@ -192,17 +166,17 @@ def main() -> None:
         "education",
     ]
 
-    print(f"\n[AI Study Assistant V3]  Device: {DEVICE.upper()}")
+    print(f"\n[AI Study Assistant]  Device: {DEVICE.upper()}")
     timings: Dict[str, float] = {}
     t0 = time.perf_counter()
 
-    # 1. Transcription
+    # transcribe
     t = time.perf_counter()
     print("  → Transcribing audio…")
     transcript = transcribe_audio(args.audio, args.whisper_model, args.language)
     timings["transcribe_s"] = round(time.perf_counter() - t, 2)
 
-    # 2. Topic classification
+    # topics
     t = time.perf_counter()
     print("  → Classifying topics…")
     raw_topics = classify_topics_zero_shot(transcript, candidate_labels, args.classifier_model)
@@ -211,39 +185,37 @@ def main() -> None:
         topics = raw_topics[:args.top_topics]
     timings["classify_s"] = round(time.perf_counter() - t, 2)
 
-    # 3. Keyword extraction
+    # keywords
     t = time.perf_counter()
     print("  → Extracting keywords…")
     raw_keywords = extract_keywords_tfidf(transcript, top_k=args.top_keywords)
     keywords = clean_keywords(raw_keywords, min_len=4, max_items=8)
     timings["keywords_s"] = round(time.perf_counter() - t, 2)
 
-    # 4. Hierarchical summarisation
+    # summarise
     t = time.perf_counter()
-    print("  → Summarising (hierarchical, sentence-aware)…")
+    print("  → Summarising…")
     summary = summarise_hierarchical(transcript, args.summary_model, args.max_summary_len, args.min_summary_len)
     timings["summarise_s"] = round(time.perf_counter() - t, 2)
 
     timings["total_s"] = round(time.perf_counter() - t0, 2)
     comp = compression_ratio(transcript, summary)
 
-    # 5. Metrics
     reference_transcript = read_optional_text(args.ref_transcript)
     reference_summary    = read_optional_text(args.ref_summary)
     asr_scores   = compute_asr_metrics(reference_transcript, transcript)
     rouge_scores = compute_rouge(reference_summary, summary)
 
-    # 6. Persist
     payload = {
-        "audio":            args.audio,
-        "device":           DEVICE,
-        "transcript":       transcript,
-        "topics":           topics,
-        "keywords":         keywords,
-        "summary":          summary,
-        "timings":          timings,
+        "audio":             args.audio,
+        "device":            DEVICE,
+        "transcript":        transcript,
+        "topics":            topics,
+        "keywords":          keywords,
+        "summary":           summary,
+        "timings":           timings,
         "compression_ratio": comp,
-        "metrics":          {**asr_scores, **rouge_scores},
+        "metrics":           {**asr_scores, **rouge_scores},
     }
     json_path, txt_path = save_outputs(args.output_dir, payload)
 
@@ -265,16 +237,16 @@ def main() -> None:
     log_run(args.log_csv, row)
 
     print(f"\n=== Results ===")
-    print(f"  Device:          {DEVICE.upper()}")
-    print(f"  Topics:          {topics}")
-    print(f"  Keywords:        {keywords}")
-    print(f"  Summary:         {summary}")
-    print(f"  Timings:         {timings}")
-    print(f"  Compression:     {comp}")
-    print(f"  Metrics:         {payload['metrics']}")
-    print(f"  Saved JSON:      {json_path}")
-    print(f"  Saved summary:   {txt_path}")
-    print(f"  Logged CSV:      {args.log_csv}")
+    print(f"  Device:        {DEVICE.upper()}")
+    print(f"  Topics:        {topics}")
+    print(f"  Keywords:      {keywords}")
+    print(f"  Summary:       {summary}")
+    print(f"  Timings:       {timings}")
+    print(f"  Compression:   {comp}")
+    print(f"  Metrics:       {payload['metrics']}")
+    print(f"  Saved JSON:    {json_path}")
+    print(f"  Saved summary: {txt_path}")
+    print(f"  Logged CSV:    {args.log_csv}")
 
 
 if __name__ == "__main__":

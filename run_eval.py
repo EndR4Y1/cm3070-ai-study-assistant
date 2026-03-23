@@ -1,12 +1,7 @@
 """
-run_eval.py — Full evaluation script for CM3070 report data.
-
-Run from inside the project folder:
-    python run_eval.py
-
-Outputs a JSON file (eval_results.json) with every number needed for the
-report: word count, timings, WER, compression ratios, ROUGE scores (both
-one-pass baseline and hierarchical V4), topic confidence scores, keywords.
+run_eval.py – full evaluation run for the CM3070 project.
+Run from inside the project folder:  python run_eval.py
+Outputs: outputs/eval_results.json
 """
 import json, time, re, sys, os
 import numpy as np
@@ -14,7 +9,6 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
 import whisper
 
-# ── Add src to path ───────────────────────────────────────────────────────────
 sys.path.insert(0, os.path.dirname(__file__))
 from src.text_utils import (
     normalize_whitespace, adaptive_chunk_size,
@@ -33,7 +27,7 @@ TOPIC_LABELS   = [
     "Mathematics", "Education",
 ]
 
-# ── Helper: summarise one chunk ───────────────────────────────────────────────
+
 def summarise_one(text, tokenizer, model, max_l, min_l):
     inputs = tokenizer(text, max_length=1024, truncation=True, return_tensors="pt")
     ids = model.generate(
@@ -42,10 +36,11 @@ def summarise_one(text, tokenizer, model, max_l, min_l):
     )
     return normalize_whitespace(tokenizer.batch_decode(ids, skip_special_tokens=True)[0])
 
+
 results = {}
 t_global = time.perf_counter()
 
-# ── 1. Transcription ──────────────────────────────────────────────────────────
+# 1. transcription
 print("\n[1/6] Transcribing audio (Whisper base)...")
 t = time.perf_counter()
 w_model = whisper.load_model("base")
@@ -55,11 +50,11 @@ t_transcribe = round(time.perf_counter() - t, 2)
 word_count = len(transcript.split())
 print(f"    Done: {t_transcribe}s  |  {word_count} words")
 
-results["transcript"] = transcript
-results["word_count"] = word_count
+results["transcript"]   = transcript
+results["word_count"]   = word_count
 results["transcribe_s"] = t_transcribe
 
-# ── 2. Topic classification ───────────────────────────────────────────────────
+# 2. topic classification
 print("\n[2/6] Classifying topics (zero-shot BART-MNLI)...")
 t = time.perf_counter()
 clf = pipeline("zero-shot-classification", model=CLASSIFIER)
@@ -74,10 +69,10 @@ print(f"    Done: {t_classify}s")
 for tp in topics[:5]:
     print(f"      {tp['label']:30s} {tp['confidence']:.4f}")
 
-results["topics"] = topics
+results["topics"]     = topics
 results["classify_s"] = t_classify
 
-# ── 3. Keyword extraction ─────────────────────────────────────────────────────
+# 3. keyword extraction
 print("\n[3/6] Extracting keywords (TF-IDF)...")
 t = time.perf_counter()
 vec = TfidfVectorizer(stop_words="english", ngram_range=(1, 2), max_features=2000)
@@ -90,71 +85,67 @@ keywords = clean_keywords(raw_kws, min_len=4, max_items=8)
 t_keywords = round(time.perf_counter() - t, 2)
 print(f"    Done: {t_keywords}s  |  {keywords}")
 
-results["keywords"] = keywords
+results["keywords"]   = keywords
 results["keywords_s"] = t_keywords
 
-# ── 4. Load summariser ────────────────────────────────────────────────────────
+# 4. load summariser
 print("\n[4/6] Loading BART summariser...")
-tokenizer = AutoTokenizer.from_pretrained(SUMMARIZER)
+tokenizer  = AutoTokenizer.from_pretrained(SUMMARIZER)
 sum_model  = AutoModelForSeq2SeqLM.from_pretrained(SUMMARIZER)
 
-# ── 5a. ONE-PASS baseline summarisation (V1 approach) ────────────────────────
+# 5a. one-pass baseline (V1 approach)
 print("\n[5/6] One-pass summarisation (baseline V1)...")
 t = time.perf_counter()
-onepass_summary = summarise_one(transcript, tokenizer, sum_model, MAX_SUM, MIN_SUM)
-t_onepass = round(time.perf_counter() - t, 2)
-onepass_words = len(onepass_summary.split())
+onepass_summary     = summarise_one(transcript, tokenizer, sum_model, MAX_SUM, MIN_SUM)
+t_onepass           = round(time.perf_counter() - t, 2)
+onepass_words       = len(onepass_summary.split())
 onepass_compression = round(onepass_words / max(1, word_count), 4)
 print(f"    Done: {t_onepass}s  |  {onepass_words} words  |  compression {onepass_compression:.1%}")
 
-results["onepass_summary"] = onepass_summary
-results["onepass_words"] = onepass_words
+results["onepass_summary"]     = onepass_summary
+results["onepass_words"]       = onepass_words
 results["onepass_compression"] = onepass_compression
-results["onepass_s"] = t_onepass
+results["onepass_s"]           = t_onepass
 
-# ── 5b. HIERARCHICAL summarisation (V4 approach) ─────────────────────────────
+# 5b. hierarchical summarisation (V4)
 print("\n[6/6] Hierarchical summarisation (V4)...")
 t = time.perf_counter()
 chunk_size = adaptive_chunk_size(word_count)
-chunks = chunk_text_sentences(transcript, target_words=chunk_size)
+chunks     = chunk_text_sentences(transcript, target_words=chunk_size)
 print(f"    Chunks: {len(chunks)}  (chunk_size={chunk_size})")
 
 chunk_sums = []
 for i, chunk in enumerate(chunks):
-    cw = len(chunk.split())
+    cw    = len(chunk.split())
     c_min = min(MIN_SUM, max(20, cw // 6))
     c_max = min(MAX_SUM, max(60, cw // 2))
-    cs = summarise_one(chunk, tokenizer, sum_model, c_max, c_min)
+    cs    = summarise_one(chunk, tokenizer, sum_model, c_max, c_min)
     chunk_sums.append(cs)
     print(f"    Chunk {i+1}/{len(chunks)}: {cw} words → {len(cs.split())} words")
 
-merged = " ".join(chunk_sums)
+merged       = " ".join(chunk_sums)
 hier_summary = summarise_one(merged, tokenizer, sum_model, MAX_SUM, MIN_SUM)
-t_hier = round(time.perf_counter() - t, 2)
-hier_words = len(hier_summary.split())
+t_hier       = round(time.perf_counter() - t, 2)
+hier_words   = len(hier_summary.split())
 hier_compression = round(hier_words / max(1, word_count), 4)
 print(f"    Done: {t_hier}s  |  {hier_words} words  |  compression {hier_compression:.1%}")
 
-results["hier_summary"] = hier_summary
-results["hier_words"] = hier_words
+results["hier_summary"]     = hier_summary
+results["hier_words"]       = hier_words
 results["hier_compression"] = hier_compression
-results["hier_s"] = t_hier
-results["num_chunks"] = len(chunks)
-results["chunk_size"] = chunk_size
+results["hier_s"]           = t_hier
+results["num_chunks"]       = len(chunks)
+results["chunk_size"]       = chunk_size
+results["total_s"]          = round(time.perf_counter() - t_global, 2)
 
-# ── Total runtime ─────────────────────────────────────────────────────────────
-results["total_s"] = round(time.perf_counter() - t_global, 2)
-
-# ── 6. Metrics (ROUGE — needs reference summary) ──────────────────────────────
-# Write a brief reference summary of the lecture yourself and save it as
-# refs/reference_summary.txt  — then re-run this script to get ROUGE scores.
+# 6. ROUGE (needs reference files)
 ref_sum_path = "refs/reference_summary.txt"
 ref_txt_path = "refs/reference_transcript.txt"
 
 if os.path.exists(ref_sum_path):
     with open(ref_sum_path) as f:
         ref_sum = f.read().strip()
-    rouge_hier   = compute_rouge(ref_sum, hier_summary)
+    rouge_hier    = compute_rouge(ref_sum, hier_summary)
     rouge_onepass = compute_rouge(ref_sum, onepass_summary)
     results["rouge_hier"]    = rouge_hier
     results["rouge_onepass"] = rouge_onepass
@@ -162,7 +153,7 @@ if os.path.exists(ref_sum_path):
     print(f"  ROUGE (one-pass):      R1={rouge_onepass['rouge1_f']}  R2={rouge_onepass['rouge2_f']}  RL={rouge_onepass['rougeL_f']}")
 else:
     print(f"\n  [ROUGE skipped — create {ref_sum_path} with a reference summary to enable]")
-    results["rouge_hier"] = None
+    results["rouge_hier"]    = None
     results["rouge_onepass"] = None
 
 if os.path.exists(ref_txt_path):
@@ -176,7 +167,7 @@ else:
     print(f"  [WER skipped — create {ref_txt_path} with a reference transcript to enable]")
     results["wer"] = None
 
-# ── Save ──────────────────────────────────────────────────────────────────────
+# save
 os.makedirs("outputs", exist_ok=True)
 with open("outputs/eval_results.json", "w") as f:
     json.dump(results, f, indent=2)

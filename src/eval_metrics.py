@@ -4,7 +4,7 @@ from rouge_score import rouge_scorer
 
 
 def compute_asr_metrics(reference_text: Optional[str], hypothesis_text: str) -> Dict[str, Optional[float]]:
-    """Compute Word Error Rate and Character Error Rate against a reference transcript."""
+    """WER and CER against a reference transcript. Returns None values if no reference provided."""
     if not reference_text:
         return {"wer": None, "cer": None}
     return {
@@ -14,12 +14,8 @@ def compute_asr_metrics(reference_text: Optional[str], hypothesis_text: str) -> 
 
 
 def compute_rouge(reference_summary: Optional[str], generated_summary: str) -> Dict[str, Optional[float]]:
-    """
-    Compute ROUGE-1, ROUGE-2, and ROUGE-L against a reference summary.
-
-    Returns precision, recall, and F-score for each variant so that
-    evaluation tables can report the full picture rather than F alone.
-    """
+    """ROUGE-1/2/L scores against a reference summary (precision, recall, F1).
+    Returns None values if no reference is provided."""
     if not reference_summary:
         return {
             "rouge1_p": None, "rouge1_r": None, "rouge1_f": None,
