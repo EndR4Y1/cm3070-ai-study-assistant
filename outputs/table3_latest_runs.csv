@@ -1,0 +1,2 @@
+timestamp,version,audio,transcribe_s,classify_s,keywords_s,summarise_s,total_s,compression_ratio,top_topic,top_confidence,wer,cer,rouge1_f,rouge2_f,rougeL_f
+2026-02-05T21:50:46,v3,test_lecture.wav,8.26,2.87,0.0,181.87,193.01,0.075,machine learning,0.9927905201911926,,,,,

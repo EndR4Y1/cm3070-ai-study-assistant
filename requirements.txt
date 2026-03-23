@@ -1,0 +1,9 @@
+openai-whisper
+transformers>=4.36
+torch
+scikit-learn
+jiwer
+rouge-score
+numpy
+pandas
+gradio>=4.0,<6.0

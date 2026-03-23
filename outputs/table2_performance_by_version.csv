@@ -1,0 +1,2 @@
+version,transcribe_s,classify_s,keywords_s,summarise_s,total_s,compression_ratio,top_confidence,wer,cer,rougeL_f
+v3,8.26,2.87,0.0,181.87,193.01,0.075,0.993,,,

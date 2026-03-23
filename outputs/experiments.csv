@@ -1,0 +1,7 @@
+timestamp,version,audio,transcribe_s,classify_s,keywords_s,summarise_s,total_s,compression_ratio,top_topic,top_confidence,wer,cer,rouge1_f,rouge2_f,rougeL_f
+2026-02-05T21:50:46,v3,test_lecture.wav,8.26,2.87,0.0,181.87,193.01,0.075,machine learning,0.9927905201911926,,,,,
+2026-02-06T16:15:32,v3,test_lecture.wav,8.27,3.79,0.0,33.22,45.28,0.075,machine learning,0.9927905201911926,,,,,
+2026-03-15T22:44:41,v3-ui,/private/var/folders/dy/bnq0l2296qncn55kfn_cc5f40000gn/T/gradio/caf3f677aebf9b3dda800944017a07e35de8df9322ef040ae3f660936ffe91c9/test_lecture.wav,10.99,7.88,0.0,22.59,42.2,0.075,Machine Learning,0.9802720546722412,,,,,
+2026-03-19T22:25:03,v3-ui,/private/var/folders/dy/bnq0l2296qncn55kfn_cc5f40000gn/T/gradio/94f6a3b7873bad9dacc868b49ca52793228782eeed1d4734dac6631a0f6ceb57/test_lecture.wav,10.49,7.49,0.01,24.82,43.61,0.075,Machine Learning,0.9802720546722412,,,,,
+2026-03-19T23:06:11,v3-ui,/private/var/folders/dy/bnq0l2296qncn55kfn_cc5f40000gn/T/gradio/66d50530947e99cc02d8d5cf9133ce4eb2fe34563fa8042d8e4ff25505093456/test_lecture.wav,36.18,4.89,0.0,48.31,90.15,0.029,Artificial Intelligence,0.9823746681213379,,,,,
+2026-03-21T09:41:02,v3-ui,/private/var/folders/dy/bnq0l2296qncn55kfn_cc5f40000gn/T/gradio/66d50530947e99cc02d8d5cf9133ce4eb2fe34563fa8042d8e4ff25505093456/test_lecture.wav,36.99,4.62,0.01,40.99,83.3,0.029,Artificial Intelligence,0.9823746681213379,,,,,
